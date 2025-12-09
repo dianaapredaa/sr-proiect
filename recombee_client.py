@@ -412,7 +412,12 @@ class MovieRecommender:
         
         # Booster pentru filme cu rating-uri bune (returnează număr, nu boolean)
         # Multiplică scorul cu 1.5 pentru filme cu rating > 7, altfel 1.0
-        booster = "if 'vote_average' > 7 then 1.5 else 1.0"
+        # booster = "if 'vote_average' > 7 then 1.5 else 1.0"
+        booster = """
+        if 'vote_count' < 500 AND 'vote_average' > 7 then 1.3 
+        else if 'vote_average' > 7 then 1.5 
+        else 1.0
+        """
         
         try:
             response = self.client.send(RecommendItemsToUser(
