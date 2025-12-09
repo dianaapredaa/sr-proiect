@@ -131,6 +131,12 @@ def load_ratings_to_recombee(recommender, limit=None):
     # Încarcă rating-urile
     recommender.add_ratings_batch(ratings_data, batch_size=1000)
     
+    # Calculează preferințele utilizatorilor din rating-uri
+    print("\n" + "=" * 50)
+    print("🎯 CALCULARE PREFERINȚE UTILIZATORI")
+    print("=" * 50)
+    recommender.update_all_users_preferences()
+    
     return len(ratings_data)
 
 
@@ -165,6 +171,11 @@ def main():
         action='store_true',
         help='Mod test: încarcă doar 100 filme și 1000 rating-uri'
     )
+    parser.add_argument(
+        '--reset',
+        action='store_true',
+        help='Resetează baza de date Recombee înainte de încărcare (șterge toate datele existente!)'
+    )
     
     args = parser.parse_args()
     
@@ -196,6 +207,17 @@ def main():
     except Exception as e:
         print(f"❌ Eroare la conectarea cu Recombee: {e}")
         sys.exit(1)
+    
+    # Resetare baza de date dacă este solicitat
+    if args.reset:
+        print("\n" + "=" * 60)
+        print("🗑️  RESETARE BAZĂ DE DATE RECOMBEE")
+        print("=" * 60)
+        print("⚠️  ATENȚIE: Toate datele existente vor fi șterse!")
+        if recommender.reset_database(skip_confirmation=True):
+            print("✅ Baza de date a fost resetată cu succes")
+        else:
+            print("❌ Eroare la resetare. Continuăm cu datele existente...")
     
     # Încărcare date
     total_movies = 0
@@ -231,6 +253,10 @@ def main():
     print(f"\n📊 Statistici Recombee:")
     print(f"   - Total filme în DB: {stats['total_items']:,}")
     print(f"   - Total utilizatori: {stats['total_users']:,}")
+    
+    # Verifică calitatea datelor
+    print("\n" + "=" * 60)
+    recommender.verify_data_quality(sample_size=5)
     
     print("\n🚀 Pornește aplicația cu: python app.py")
 

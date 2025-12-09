@@ -54,10 +54,19 @@ def load_movies_metadata(filepath=None):
     
     df = pd.read_csv(filepath, low_memory=False, dtype=dtype)
     
+    initial_count = len(df)
+    
     # Convertim id-urile la numeric și eliminăm rândurile invalide
     df['id'] = pd.to_numeric(df['id'], errors='coerce')
     df = df.dropna(subset=['id'])
     df['id'] = df['id'].astype(int)
+    
+    # Filtrează filmele fără titlu valid
+    df = df[df['title'].notna() & (df['title'] != '') & (df['title'].str.strip() != '')].copy()
+    
+    filtered_count = initial_count - len(df)
+    if filtered_count > 0:
+        print(f"⚠️  Filtrate {filtered_count} filme invalide (fără ID sau titlu)")
     
     # Procesăm genurile
     print("🎭 Procesare genuri...")
@@ -155,6 +164,18 @@ def load_ratings(filepath=None, sample_size=None):
         df = pd.read_csv(filepath)
         print(f"✅ Încărcate {len(df):,} ratings")
     
+    # Convertim userId și movieId la int pentru a evita probleme cu tipurile
+    initial_count = len(df)
+    df['userId'] = pd.to_numeric(df['userId'], errors='coerce')
+    df['movieId'] = pd.to_numeric(df['movieId'], errors='coerce')
+    df = df.dropna(subset=['userId', 'movieId'])
+    df['userId'] = df['userId'].astype(int)
+    df['movieId'] = df['movieId'].astype(int)
+    
+    filtered_count = initial_count - len(df)
+    if filtered_count > 0:
+        print(f"⚠️  Filtrate {filtered_count} rating-uri invalide (userId sau movieId lipsă)")
+    
     return df
 
 
@@ -195,29 +216,65 @@ def prepare_movies_for_recombee(movies_df):
     """
     print("📦 Pregătire date pentru Recombee...")
     
+    # Filtrează filmele invalide: trebuie să aibă cel puțin un titlu valid
+    initial_count = len(movies_df)
+    movies_df = movies_df[
+        movies_df['title'].notna() & 
+        (movies_df['title'] != '') & 
+        (movies_df['title'].str.strip() != '')
+    ].copy()
+    
+    filtered_count = initial_count - len(movies_df)
+    if filtered_count > 0:
+        print(f"⚠️  Filtrate {filtered_count} filme fără titlu valid")
+    
     movies = []
     for _, row in tqdm(movies_df.iterrows(), total=len(movies_df), desc="Procesare filme"):
+        # Procesăm genurile - asigurăm că e listă
+        genres = row.get('genre_names', [])
+        if not isinstance(genres, list):
+            genres = []
+        
+        # Procesăm keywords - asigurăm că e listă
+        keywords = []
+        if 'keyword_names' in row and isinstance(row['keyword_names'], list):
+            keywords = row['keyword_names'][:10]  # Max 10 keywords
+        
+        # Procesăm director
+        director = ''
+        if 'director' in row and pd.notna(row.get('director')):
+            director = str(row['director'])
+        
+        # Procesăm actori - asigurăm că e listă
+        actors = []
+        if 'actors' in row and isinstance(row['actors'], list):
+            actors = row['actors'][:5]  # Max 5 actori
+        
+        # Procesăm release_date - asigurăm că e string valid
+        release_date = str(row.get('release_date', '')) if pd.notna(row.get('release_date')) else ''
+        
+        # Procesăm poster_path
+        poster_path = str(row.get('poster_path', '')) if pd.notna(row.get('poster_path')) else ''
+        
+        # Verificăm dacă filmul are cel puțin date minime valide
+        title = str(row.get('title', '')).strip()
+        if not title or title == '' or title == 'nan':
+            continue  # Sărim filmele fără titlu valid
+        
         movie = {
             'item_id': str(row['id']),
-            'title': str(row.get('title', '')),
-            'overview': str(row.get('overview', ''))[:1000],  # Limităm la 1000 caractere
-            'genres': row.get('genre_names', []) if isinstance(row.get('genre_names'), list) else [],
-            'release_date': str(row.get('release_date', '')),
-            'vote_average': float(row.get('vote_average', 0)),
-            'vote_count': int(row.get('vote_count', 0)),
-            'runtime': int(row.get('runtime', 0)),
-            'poster_path': str(row.get('poster_path', '')) if pd.notna(row.get('poster_path')) else '',
+            'title': title,
+            'overview': str(row.get('overview', ''))[:1000] if pd.notna(row.get('overview')) else '',  # Limităm la 1000 caractere
+            'genres': genres,
+            'keywords': keywords,  # Întotdeauna o listă (chiar dacă goală)
+            'director': director,
+            'actors': actors,  # Întotdeauna o listă (chiar dacă goală)
+            'release_date': release_date,
+            'vote_average': float(row.get('vote_average', 0)) if pd.notna(row.get('vote_average')) else 0.0,
+            'vote_count': int(row.get('vote_count', 0)) if pd.notna(row.get('vote_count')) else 0,
+            'runtime': int(row.get('runtime', 0)) if pd.notna(row.get('runtime')) else 0,
+            'poster_path': poster_path,
         }
-        
-        # Adăugăm keywords dacă există
-        if 'keyword_names' in row and isinstance(row['keyword_names'], list):
-            movie['keywords'] = row['keyword_names'][:10]  # Max 10 keywords
-        
-        # Adăugăm director și actori dacă există
-        if 'director' in row:
-            movie['director'] = str(row['director'])
-        if 'actors' in row and isinstance(row['actors'], list):
-            movie['actors'] = row['actors'][:5]  # Max 5 actori
         
         movies.append(movie)
     
@@ -234,13 +291,32 @@ def prepare_ratings_for_recombee(ratings_df):
     """
     print("📦 Pregătire ratings pentru Recombee...")
     
+    # Filtrează rating-urile invalide
+    initial_count = len(ratings_df)
+    ratings_df = ratings_df[
+        ratings_df['userId'].notna() & 
+        ratings_df['movieId'].notna() & 
+        ratings_df['rating'].notna()
+    ].copy()
+    
+    filtered_count = initial_count - len(ratings_df)
+    if filtered_count > 0:
+        print(f"⚠️  Filtrate {filtered_count} rating-uri invalide")
+    
     interactions = []
     for _, row in tqdm(ratings_df.iterrows(), total=len(ratings_df), desc="Procesare ratings"):
+        # Convertim userId și movieId la int apoi string pentru a evita ".0"
+        user_id = str(int(row['userId'])) if pd.notna(row['userId']) else None
+        item_id = str(int(row['movieId'])) if pd.notna(row['movieId']) else None
+        
+        if user_id is None or item_id is None:
+            continue  # Sărim rating-urile invalide
+        
         interaction = {
-            'user_id': str(row['userId']),
-            'item_id': str(row['movieId']),
-            'rating': float(row['rating']),
-            'timestamp': int(row['timestamp'])
+            'user_id': user_id,
+            'item_id': item_id,
+            'rating': float(row['rating']) if pd.notna(row['rating']) else 0.0,
+            'timestamp': int(row['timestamp']) if pd.notna(row['timestamp']) else None
         }
         interactions.append(interaction)
     
