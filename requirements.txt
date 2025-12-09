@@ -1,0 +1,26 @@
+# Movie Recommendation System - Dependencies
+# Python 3.9+
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Recombee API Client
+recombee-api-client==4.1.1
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+
+# HTTP Requests
+requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# WSGI Server
+gunicorn==21.2.0
+
+# Utilities
+tqdm==4.66.1
+

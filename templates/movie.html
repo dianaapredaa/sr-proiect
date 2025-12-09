@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Detalii Film{% endblock %}
+
+{% block content %}
+<div class="movie-page">
+    <!-- Loading State -->
+    <div class="loading-container" id="loadingContainer">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">Se încarcă detaliile filmului...</p>
+    </div>
+    
+    <!-- Movie Details -->
+    <div class="movie-details" id="movieDetails" style="display: none;">
+        <div class="movie-backdrop" id="movieBackdrop"></div>
+        
+        <div class="movie-content">
+            <div class="movie-poster-large" id="moviePoster">
+                <!-- Poster will be loaded here -->
+            </div>
+            
+            <div class="movie-info-detailed">
+                <h1 class="movie-title-large" id="movieTitle">--</h1>
+                
+                <div class="movie-meta">
+                    <span class="meta-item" id="movieYear">
+                        <span class="meta-icon">📅</span>
+                        <span class="meta-value">--</span>
+                    </span>
+                    <span class="meta-item" id="movieRuntime">
+                        <span class="meta-icon">⏱️</span>
+                        <span class="meta-value">-- min</span>
+                    </span>
+                    <span class="meta-item rating" id="movieRating">
+                        <span class="meta-icon">⭐</span>
+                        <span class="meta-value">--</span>
+                    </span>
+                </div>
+                
+                <div class="movie-genres-tags" id="movieGenres">
+                    <!-- Genres will be loaded here -->
+                </div>
+                
+                <div class="movie-overview">
+                    <h3>Descriere</h3>
+                    <p id="movieOverview">--</p>
+                </div>
+                
+                <!-- Rating Section -->
+                <div class="rating-section">
+                    <h3>
+                        <span class="section-icon">⭐</span>
+                        Dă un rating
+                    </h3>
+                    <p class="rating-hint">Rating-ul tău ajută sistemul să învețe preferințele tale (Filtrare Colaborativă)</p>
+                    
+                    <div class="star-rating" id="starRating">
+                        <button class="star-btn" data-rating="1">★</button>
+                        <button class="star-btn" data-rating="2">★</button>
+                        <button class="star-btn" data-rating="3">★</button>
+                        <button class="star-btn" data-rating="4">★</button>
+                        <button class="star-btn" data-rating="5">★</button>
+                    </div>
+                    
+                    <p class="rating-feedback" id="ratingFeedback"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Similar Movies Section -->
+    <section class="similar-section">
+        <div class="section-header">
+            <h2 class="section-title">
+                <span class="title-icon">🎬</span>
+                Filme Similare
+            </h2>
+            <p class="section-description">
+                Bazat pe Item-Based Collaborative Filtering și similaritate de conținut
+            </p>
+        </div>
+        
+        <div class="movies-carousel" id="similarMovies">
+            <!-- Similar movies will be loaded here -->
+        </div>
+    </section>
+    
+    <!-- Algorithm Explanation -->
+    <div class="algorithm-explanation">
+        <h3>
+            <span class="info-icon">💡</span>
+            Cum găsim filme similare?
+        </h3>
+        <div class="explanation-content">
+            <div class="explanation-method">
+                <h4>Item-Based Collaborative Filtering</h4>
+                <p>Analizăm ce filme au fost apreciate de utilizatorii care au apreciat și acest film.</p>
+            </div>
+            <div class="explanation-method">
+                <h4>Similaritate de Conținut</h4>
+                <p>Comparăm genurile, regizorii, actorii și cuvintele cheie pentru a găsi filme cu atribute similare.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const movieId = '{{ movie_id }}';
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadMovieDetails();
+    loadSimilarMovies();
+    setupRating();
+});
+
+async function loadMovieDetails() {
+    const loading = document.getElementById('loadingContainer');
+    const details = document.getElementById('movieDetails');
+    
+    try {
+        const response = await fetch(`/api/movie/${movieId}`);
+        const data = await response.json();
+        
+        loading.style.display = 'none';
+        
+        if (data.success || data.movie) {
+            const movie = data.movie;
+            renderMovieDetails(movie);
+            details.style.display = 'block';
+        } else {
+            details.innerHTML = '<p class="error-message">Filmul nu a fost găsit.</p>';
+            details.style.display = 'block';
+        }
+    } catch (error) {
+        loading.style.display = 'none';
+        details.innerHTML = '<p class="error-message">Eroare la încărcarea detaliilor.</p>';
+        details.style.display = 'block';
+    }
+}
+
+function getPosterUrl(posterPath, size = 'w500') {
+    if (posterPath && 
+        posterPath !== 'nan' && 
+        posterPath !== 'None' && 
+        posterPath !== 'NaN' &&
+        String(posterPath).trim() !== '' &&
+        String(posterPath).trim() !== 'null') {
+        const path = String(posterPath).startsWith('/') ? posterPath : '/' + posterPath;
+        return `https://image.tmdb.org/t/p/${size}${path}`;
+    }
+    return null;
+}
+
+function createPlaceholderHtml(title) {
+    // Diferite iconițe pentru varietate
+    const icons = ['🎬', '🎥', '🎞️', '📽️', '🍿', '🎭', '⭐', '🌟'];
+    const icon = icons[Math.abs(hashCode(title || 'Film')) % icons.length];
+    
+    // Diferite culori de accent pentru varietate
+    const colors = ['#e50914', '#00d4ff', '#ffd700', '#9b59b6', '#3498db', '#e74c3c', '#2ecc71', '#f39c12'];
+    const colorIndex = Math.abs(hashCode(title || 'Film')) % colors.length;
+    
+    return `
+        <div class="poster-placeholder" style="--accent-color: ${colors[colorIndex]}">
+            <span class="placeholder-icon">${icon}</span>
+            <span class="placeholder-title">${title || 'Film'}</span>
+        </div>
+    `;
+}
+
+// Funcție simplă de hash pentru a genera valori consistente pentru același titlu
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash;
+}
+
+function handleImageError(img, title) {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'poster-placeholder';
+    placeholder.innerHTML = `
+        <span class="placeholder-icon">🎬</span>
+        <span class="placeholder-title">${title || 'Film'}</span>
+    `;
+    img.parentNode.replaceChild(placeholder, img);
+}
+
+function renderMovieDetails(movie) {
+    // Title
+    document.getElementById('movieTitle').textContent = movie.title;
+    document.title = movie.title + ' - CineMatch';
+    
+    // Poster - folosim întotdeauna placeholder CSS
+    document.getElementById('moviePoster').innerHTML = createPlaceholderHtml(movie.title);
+    document.getElementById('movieBackdrop').style.background = 
+        'linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%)';
+    
+    // Meta info
+    if (movie.release_date) {
+        const year = movie.release_date.split('-')[0];
+        document.getElementById('movieYear').querySelector('.meta-value').textContent = year;
+    }
+    
+    document.getElementById('movieRuntime').querySelector('.meta-value').textContent = 
+        `${movie.runtime || '--'} min`;
+    
+    document.getElementById('movieRating').querySelector('.meta-value').textContent = 
+        movie.vote_average?.toFixed(1) || '--';
+    
+    // Genres
+    const genresContainer = document.getElementById('movieGenres');
+    const genres = Array.isArray(movie.genres) ? movie.genres : [];
+    genresContainer.innerHTML = genres.map(g => 
+        `<span class="genre-tag">${g}</span>`
+    ).join('');
+    
+    // Overview
+    document.getElementById('movieOverview').textContent = 
+        movie.overview || 'Nu există descriere disponibilă.';
+}
+
+async function loadSimilarMovies() {
+    const container = document.getElementById('similarMovies');
+    
+    try {
+        const response = await fetch(`/api/similar/${movieId}?count=8`);
+        const data = await response.json();
+        
+        if (data.success || data.similar_movies) {
+            renderSimilarMovies(data.similar_movies, container);
+        }
+    } catch (error) {
+        container.innerHTML = '<p class="error-message">Nu s-au putut încărca filmele similare.</p>';
+    }
+}
+
+function renderSimilarMovies(movies, container) {
+    container.innerHTML = '';
+    
+    if (!movies || movies.length === 0) {
+        container.innerHTML = '<p class="no-results">Nu s-au găsit filme similare.</p>';
+        return;
+    }
+    
+    movies.forEach((movie, index) => {
+        const card = document.createElement('div');
+        card.className = 'carousel-card';
+        card.style.animationDelay = `${index * 0.1}s`;
+        
+        // Folosim întotdeauna placeholder CSS
+        const posterContent = createPlaceholderHtml(movie.title);
+        
+        card.innerHTML = `
+            ${posterContent}
+            <div class="carousel-overlay">
+                <p class="carousel-title">${movie.title}</p>
+                <span class="carousel-rating">★ ${movie.vote_average?.toFixed(1) || 'N/A'}</span>
+            </div>
+        `;
+        
+        card.onclick = () => {
+            window.location.href = `/movie/${movie.id}`;
+        };
+        
+        container.appendChild(card);
+    });
+}
+
+function setupRating() {
+    const starBtns = document.querySelectorAll('.star-btn');
+    const feedback = document.getElementById('ratingFeedback');
+    let currentRating = 0;
+    
+    starBtns.forEach((btn, index) => {
+        // Hover effect
+        btn.addEventListener('mouseenter', () => {
+            highlightStars(index + 1);
+        });
+        
+        // Click to rate
+        btn.addEventListener('click', async () => {
+            currentRating = index + 1;
+            highlightStars(currentRating);
+            
+            // Submit rating
+            await submitRating(currentRating);
+        });
+    });
+    
+    // Reset on mouse leave
+    document.getElementById('starRating').addEventListener('mouseleave', () => {
+        highlightStars(currentRating);
+    });
+    
+    function highlightStars(count) {
+        starBtns.forEach((btn, i) => {
+            btn.classList.toggle('active', i < count);
+        });
+    }
+}
+
+async function submitRating(rating) {
+    const feedback = document.getElementById('ratingFeedback');
+    
+    try {
+        const response = await fetch('/api/rate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                movie_id: movieId,
+                rating: rating
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            feedback.textContent = `✅ Rating ${rating}/5 salvat! Mulțumim pentru feedback.`;
+            feedback.className = 'rating-feedback success';
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        feedback.textContent = `❌ Eroare: ${error.message}`;
+        feedback.className = 'rating-feedback error';
+    }
+}
+</script>
+{% endblock %}
+

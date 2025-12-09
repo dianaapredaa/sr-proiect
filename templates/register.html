@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Setează Preferințe{% endblock %}
+
+{% block content %}
+<div class="register-page">
+    <div class="register-container">
+        <div class="register-header">
+            <h1 class="register-title">
+                <span class="title-icon">✨</span>
+                Bun venit la CineMatch!
+            </h1>
+            <p class="register-subtitle">
+                Spune-ne ce genuri de filme îți plac și îți vom oferi recomandări personalizate.
+            </p>
+        </div>
+        
+        <!-- Cold Start Explanation -->
+        <div class="info-card">
+            <div class="info-icon">🧊</div>
+            <div class="info-content">
+                <h3>Problema Cold Start</h3>
+                <p>
+                    Când ești nou, sistemul nu are informații despre preferințele tale. 
+                    De aceea, te rugăm să selectezi câteva genuri preferate - astfel putem folosi 
+                    <strong>filtrarea bazată pe conținut</strong> pentru a-ți oferi primele recomandări!
+                </p>
+            </div>
+        </div>
+        
+        <form id="preferencesForm" class="preferences-form">
+            <div class="form-section">
+                <h2 class="form-section-title">
+                    <span class="section-icon">🎭</span>
+                    Selectează genurile preferate
+                </h2>
+                <p class="form-hint">Alege cel puțin 3 genuri pentru recomandări mai bune</p>
+                
+                <div class="genres-grid" id="genresGrid">
+                    {% for genre in genres %}
+                    <label class="genre-option">
+                        <input type="checkbox" name="genres" value="{{ genre }}">
+                        <span class="genre-card">
+                            <span class="genre-icon">{{ '🎬' if genre == 'Action' else '😂' if genre == 'Comedy' else '😢' if genre == 'Drama' else '👻' if genre == 'Horror' else '💕' if genre == 'Romance' else '🚀' if genre == 'Science Fiction' else '😰' if genre == 'Thriller' else '🎨' if genre == 'Animation' else '🗺️' if genre == 'Adventure' else '🏰' if genre == 'Fantasy' else '📜' if genre == 'History' else '👪' if genre == 'Family' else '🎵' if genre == 'Music' else '🔍' if genre == 'Mystery' else '📹' if genre == 'Documentary' else '⚔️' if genre == 'War' else '🤠' if genre == 'Western' else '🎥' if genre == 'Crime' else '🎭' }}</span>
+                            <span class="genre-name">{{ genre }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                
+                <div class="selection-counter">
+                    <span id="selectedCount">0</span> genuri selectate
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h2 class="form-section-title">
+                    <span class="section-icon">🎥</span>
+                    Regizori preferați (opțional)
+                </h2>
+                
+                <div class="directors-input">
+                    <input type="text" 
+                           id="directorsInput" 
+                           placeholder="ex: Christopher Nolan, Quentin Tarantino..."
+                           class="text-input">
+                    <p class="input-hint">Separă regizorii prin virgulă</p>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-large" id="submitBtn" disabled>
+                    <span class="btn-icon">🚀</span>
+                    Salvează și vezi recomandări
+                </button>
+            </div>
+        </form>
+        
+        <!-- Algorithm Info -->
+        <div class="algorithm-info">
+            <h3>
+                <span class="info-icon">ℹ️</span>
+                Cum te ajută asta?
+            </h3>
+            <div class="algorithm-steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <strong>Acum:</strong> Folosim <em>Filtrarea pe Conținut</em> 
+                        pentru a-ți arăta filme din genurile preferate
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <strong>După ce dai rating-uri:</strong> Activăm și <em>Filtrarea Colaborativă</em> 
+                        pentru a găsi utilizatori cu gusturi similare
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <strong>Cu timpul:</strong> Abordarea <em>Hibridă</em> combină ambele metode 
+                        pentru recomandări din ce în ce mai precise
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('preferencesForm');
+    const checkboxes = document.querySelectorAll('input[name="genres"]');
+    const counter = document.getElementById('selectedCount');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Update selection counter
+    function updateCounter() {
+        const selected = document.querySelectorAll('input[name="genres"]:checked').length;
+        counter.textContent = selected;
+        
+        // Enable/disable submit button
+        submitBtn.disabled = selected < 1;
+        
+        // Visual feedback
+        if (selected >= 3) {
+            counter.parentElement.classList.add('good');
+        } else {
+            counter.parentElement.classList.remove('good');
+        }
+    }
+    
+    // Add change listener to all checkboxes
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateCounter);
+    });
+    
+    // Handle form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Get selected genres
+        const selectedGenres = Array.from(
+            document.querySelectorAll('input[name="genres"]:checked')
+        ).map(cb => cb.value);
+        
+        // Get directors
+        const directorsInput = document.getElementById('directorsInput').value;
+        const directors = directorsInput
+            .split(',')
+            .map(d => d.trim())
+            .filter(d => d.length > 0);
+        
+        // Show loading state
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="btn-icon">⏳</span> Se salvează...';
+        
+        try {
+            const response = await fetch('/api/user/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    preferred_genres: selectedGenres,
+                    preferred_directors: directors
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Show success message
+                showNotification('✅ Preferințele au fost salvate!', 'success');
+                
+                // Redirect to home after a short delay
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                throw new Error(data.error || 'Eroare necunoscută');
+            }
+        } catch (error) {
+            showNotification('❌ ' + error.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span class="btn-icon">🚀</span> Salvează și vezi recomandări';
+        }
+    });
+});
+
+function showNotification(message, type) {
+    const existing = document.querySelector('.notification');
+    if (existing) existing.remove();
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = message;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => notification.remove(), 3000);
+}
+</script>
+{% endblock %}
+

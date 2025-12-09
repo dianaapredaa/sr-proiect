@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}Acasă{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <span class="title-accent">Descoperă</span> filme pentru tine
+    </h1>
+    <p class="page-subtitle">
+        Recomandări personalizate folosind inteligență artificială
+    </p>
+</div>
+
+<!-- Cold Start Banner (pentru utilizatori noi) -->
+<div class="cold-start-banner" id="coldStartBanner">
+    <div class="banner-content">
+        <div class="banner-icon">🌟</div>
+        <div class="banner-text">
+            <h3>Ești nou aici?</h3>
+            <p>Spune-ne ce genuri de filme îți plac pentru recomandări mai bune!</p>
+        </div>
+        <a href="/register" class="btn btn-glow">
+            Setează Preferințe
+        </a>
+    </div>
+</div>
+
+<!-- Genre Filter -->
+<div class="filter-section">
+    <h2 class="section-title">
+        <span class="title-icon">🎭</span>
+        Filtrează după gen
+    </h2>
+    <div class="genre-chips" id="genreChips">
+        <button class="chip active" data-genre="">Toate</button>
+        <button class="chip" data-genre="Action">Acțiune</button>
+        <button class="chip" data-genre="Comedy">Comedie</button>
+        <button class="chip" data-genre="Drama">Dramă</button>
+        <button class="chip" data-genre="Horror">Horror</button>
+        <button class="chip" data-genre="Romance">Romantic</button>
+        <button class="chip" data-genre="Science Fiction">Sci-Fi</button>
+        <button class="chip" data-genre="Thriller">Thriller</button>
+        <button class="chip" data-genre="Animation">Animație</button>
+        <button class="chip" data-genre="Adventure">Aventură</button>
+        <button class="chip" data-genre="Fantasy">Fantasy</button>
+    </div>
+</div>
+
+<!-- Recommendations Section -->
+<section class="recommendations-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="title-icon">🎯</span>
+            Recomandate pentru tine
+        </h2>
+        <div class="recommendation-type" id="recommendationType">
+            <span class="type-badge hybrid">
+                <span class="badge-icon">🔀</span>
+                Abordare Hibridă
+            </span>
+        </div>
+    </div>
+    
+    <!-- Loading State -->
+    <div class="loading-container" id="loadingContainer">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">Se încarcă recomandările...</p>
+    </div>
+    
+    <!-- Movies Grid -->
+    <div class="movies-grid" id="moviesGrid">
+        <!-- Movies will be loaded here -->
+    </div>
+</section>
+
+<!-- Popular Movies Section -->
+<section class="popular-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="title-icon">🔥</span>
+            Filme Populare
+        </h2>
+        <p class="section-description">
+            Folosite pentru Cold Start - utilizatori și filme noi
+        </p>
+    </div>
+    
+    <div class="movies-carousel" id="popularCarousel">
+        <!-- Popular movies will be loaded here -->
+    </div>
+</section>
+
+<!-- How It Works Section -->
+<section class="how-it-works">
+    <h2 class="section-title">
+        <span class="title-icon">🧠</span>
+        Cum funcționează?
+    </h2>
+    
+    <div class="mechanism-cards">
+        <div class="mechanism-card collaborative">
+            <div class="card-icon">👥</div>
+            <h3>Filtrare Colaborativă</h3>
+            <p>Analizăm rating-urile utilizatorilor similari cu tine pentru a găsi filme care le-au plăcut și ție ți-ar putea plăcea.</p>
+            <div class="card-example">
+                <strong>Exemplu:</strong> Dacă tu și alt utilizator ați apreciat aceleași filme, îți recomandăm filmele pe care el le-a văzut și ție nu.
+            </div>
+        </div>
+        
+        <div class="mechanism-card content">
+            <div class="card-icon">🎬</div>
+            <h3>Filtrare pe Conținut</h3>
+            <p>Analizăm metadatele filmelor (gen, regizor, actori, keywords) pentru a găsi filme cu atribute similare celor preferate.</p>
+            <div class="card-example">
+                <strong>Exemplu:</strong> Dacă ți-a plăcut "Inception", îți recomandăm alte filme regizate de Christopher Nolan sau din genul Sci-Fi.
+            </div>
+        </div>
+        
+        <div class="mechanism-card hybrid">
+            <div class="card-icon">🔀</div>
+            <h3>Abordare Hibridă</h3>
+            <p>Combinăm ambele metode pentru recomandări mai precise și diverse, depășind limitările fiecărei abordări în parte.</p>
+            <div class="card-example">
+                <strong>Avantaj:</strong> Rezolvă problema Cold Start prin fallback la filtrarea pe conținut când datele colaborative lipsesc.
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check user status
+    checkUserStatus();
+    
+    // Load recommendations
+    loadRecommendations();
+    
+    // Load popular movies
+    loadPopularMovies();
+    
+    // Setup genre filter
+    setupGenreFilter();
+});
+
+function checkUserStatus() {
+    fetch('/api/user/preferences')
+        .then(res => res.json())
+        .then(data => {
+            const banner = document.getElementById('coldStartBanner');
+            const userStatus = document.getElementById('userStatus');
+            const typeBadge = document.getElementById('recommendationType');
+            
+            if (data.is_new_user) {
+                banner.style.display = 'block';
+                userStatus.textContent = 'Utilizator Nou';
+                typeBadge.innerHTML = `
+                    <span class="type-badge content">
+                        <span class="badge-icon">📄</span>
+                        Filtrare pe Conținut (Cold Start)
+                    </span>
+                `;
+            } else {
+                banner.style.display = 'none';
+                userStatus.textContent = 'Utilizator Activ';
+                typeBadge.innerHTML = `
+                    <span class="type-badge hybrid">
+                        <span class="badge-icon">🔀</span>
+                        Abordare Hibridă
+                    </span>
+                `;
+            }
+        });
+}
+
+function loadRecommendations(genre = '') {
+    const grid = document.getElementById('moviesGrid');
+    const loading = document.getElementById('loadingContainer');
+    
+    loading.style.display = 'flex';
+    grid.innerHTML = '';
+    
+    let url = '/api/recommendations?count=12';
+    if (genre) {
+        url += `&genres=${encodeURIComponent(genre)}`;
+    }
+    
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            loading.style.display = 'none';
+            
+            if (data.success && data.recommendations.length > 0) {
+                renderMovies(data.recommendations, grid);
+            } else {
+                grid.innerHTML = '<p class="no-results">Nu s-au găsit recomandări. Încearcă alt gen!</p>';
+            }
+            
+            // Show demo mode notice
+            if (data.demo_mode) {
+                showDemoNotice();
+            }
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            grid.innerHTML = '<p class="error-message">Eroare la încărcarea recomandărilor.</p>';
+        });
+}
+
+function loadPopularMovies() {
+    const carousel = document.getElementById('popularCarousel');
+    
+    fetch('/api/popular?count=10')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success || data.movies) {
+                renderMoviesCarousel(data.movies, carousel);
+            }
+        });
+}
+
+function getPosterUrl(posterPath, size = 'w342') {
+    // Verifică dacă poster_path este valid
+    if (posterPath && 
+        posterPath !== 'nan' && 
+        posterPath !== 'None' && 
+        posterPath !== 'NaN' &&
+        String(posterPath).trim() !== '' &&
+        String(posterPath).trim() !== 'null') {
+        // Asigură-te că începe cu /
+        const path = String(posterPath).startsWith('/') ? posterPath : '/' + posterPath;
+        return `https://image.tmdb.org/t/p/${size}${path}`;
+    }
+    return null;
+}
+
+function createPlaceholderHtml(title, index = 0) {
+    // Diferite iconițe pentru varietate
+    const icons = ['🎬', '🎥', '🎞️', '📽️', '🍿', '🎭', '⭐', '🌟'];
+    const icon = icons[Math.abs(hashCode(title || 'Film')) % icons.length];
+    
+    // Diferite culori de accent pentru varietate
+    const colors = ['#e50914', '#00d4ff', '#ffd700', '#9b59b6', '#3498db', '#e74c3c', '#2ecc71', '#f39c12'];
+    const colorIndex = Math.abs(hashCode(title || 'Film')) % colors.length;
+    
+    return `
+        <div class="poster-placeholder" style="--accent-color: ${colors[colorIndex]}">
+            <span class="placeholder-icon">${icon}</span>
+            <span class="placeholder-title">${title || 'Film'}</span>
+        </div>
+    `;
+}
+
+// Funcție simplă de hash pentru a genera valori consistente pentru același titlu
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash;
+}
+
+function handleImageError(img, title) {
+    // Înlocuiește imaginea cu placeholder CSS
+    const placeholder = document.createElement('div');
+    placeholder.className = 'poster-placeholder';
+    placeholder.innerHTML = `
+        <span class="placeholder-icon">🎬</span>
+        <span class="placeholder-title">${title || 'Film'}</span>
+    `;
+    img.parentNode.replaceChild(placeholder, img);
+}
+
+function renderMovies(movies, container) {
+    movies.forEach((movie, index) => {
+        const genres = Array.isArray(movie.genres) 
+            ? movie.genres.slice(0, 3).join(', ')
+            : movie.genres_str || '';
+        
+        const card = document.createElement('div');
+        card.className = 'movie-card';
+        card.style.animationDelay = `${index * 0.05}s`;
+        
+        // Folosim întotdeauna placeholder CSS
+        const posterContent = createPlaceholderHtml(movie.title);
+        
+        card.innerHTML = `
+            <div class="movie-poster">
+                ${posterContent}
+                <div class="movie-overlay">
+                    <div class="rating-badge">
+                        <span class="star">★</span>
+                        <span class="score">${movie.vote_average?.toFixed(1) || 'N/A'}</span>
+                    </div>
+                    <button class="btn-view" onclick="viewMovie('${movie.id}')">
+                        Vezi Detalii
+                    </button>
+                </div>
+            </div>
+            <div class="movie-info">
+                <h3 class="movie-title">${movie.title}</h3>
+                <p class="movie-genres">${genres}</p>
+                <div class="movie-rating">
+                    <div class="rating-stars">
+                        ${generateStars(movie.vote_average || 0)}
+                    </div>
+                    <span class="vote-count">(${movie.vote_count?.toLocaleString() || 0} voturi)</span>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(card);
+    });
+}
+
+function renderMoviesCarousel(movies, container) {
+    container.innerHTML = '';
+    
+    movies.forEach((movie, index) => {
+        const card = document.createElement('div');
+        card.className = 'carousel-card';
+        card.style.animationDelay = `${index * 0.1}s`;
+        
+        // Folosim întotdeauna placeholder CSS
+        const posterContent = createPlaceholderHtml(movie.title);
+        
+        card.innerHTML = `
+            ${posterContent}
+            <div class="carousel-overlay">
+                <p class="carousel-title">${movie.title}</p>
+                <span class="carousel-rating">★ ${movie.vote_average?.toFixed(1) || 'N/A'}</span>
+            </div>
+        `;
+        
+        card.onclick = () => viewMovie(movie.id);
+        container.appendChild(card);
+    });
+}
+
+function generateStars(rating) {
+    const fullStars = Math.floor(rating / 2);
+    const halfStar = rating % 2 >= 1;
+    let stars = '';
+    
+    for (let i = 0; i < fullStars; i++) {
+        stars += '<span class="star full">★</span>';
+    }
+    if (halfStar) {
+        stars += '<span class="star half">★</span>';
+    }
+    for (let i = fullStars + (halfStar ? 1 : 0); i < 5; i++) {
+        stars += '<span class="star empty">☆</span>';
+    }
+    
+    return stars;
+}
+
+function setupGenreFilter() {
+    const chips = document.querySelectorAll('.chip');
+    
+    chips.forEach(chip => {
+        chip.addEventListener('click', function() {
+            chips.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            
+            const genre = this.dataset.genre;
+            loadRecommendations(genre);
+        });
+    });
+}
+
+function viewMovie(movieId) {
+    window.location.href = `/movie/${movieId}`;
+}
+
+function showDemoNotice() {
+    const existing = document.querySelector('.demo-notice');
+    if (existing) return;
+    
+    const notice = document.createElement('div');
+    notice.className = 'demo-notice';
+    notice.innerHTML = `
+        <span class="notice-icon">🔧</span>
+        <span>Mod Demo - Configurează Recombee API pentru funcționalitate completă</span>
+        <button onclick="this.parentElement.remove()">✕</button>
+    `;
+    
+    document.querySelector('.main-content').prepend(notice);
+}
+</script>
+{% endblock %}
+
