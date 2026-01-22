@@ -1327,6 +1327,26 @@ body {
     box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
 }
 
+.btn-secondary {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-tertiary);
+    color: var(--accent-tertiary);
+    transform: translateY(-2px);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
+}
+
 /* ==========================================
    Notifications
    ========================================== */

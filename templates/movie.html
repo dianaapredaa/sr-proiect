@@ -45,6 +45,11 @@
                     <!-- Genres will be loaded here -->
                 </div>
                 
+                <div class="movie-director" id="movieDirectorSection" style="margin: 15px 0; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h3 style="font-size: 14px; color: #aaa; margin-bottom: 5px;">🎬 Regizor</h3>
+                    <p id="movieDirector" style="font-size: 16px; color: #fff; margin: 0;">--</p>
+                </div>
+                
                 <div class="movie-overview">
                     <h3>Descriere</h3>
                     <p id="movieOverview">--</p>
@@ -224,6 +229,16 @@ function renderMovieDetails(movie) {
         `<span class="genre-tag">${g}</span>`
     ).join('');
     
+    // Director
+    const directorElement = document.getElementById('movieDirector');
+    if (movie.director && movie.director !== 'Unknown') {
+        directorElement.textContent = movie.director;
+        document.getElementById('movieDirectorSection').style.display = 'block';
+    } else {
+        directorElement.textContent = 'Informație indisponibilă';
+        document.getElementById('movieDirectorSection').style.display = 'block';
+    }
+    
     // Overview
     document.getElementById('movieOverview').textContent = 
         movie.overview || 'Nu există descriere disponibilă.';
@@ -313,6 +328,9 @@ async function submitRating(rating) {
     const feedback = document.getElementById('ratingFeedback');
     
     try {
+        // Get user_id from AppState
+        const userId = AppState.userId;
+        
         const response = await fetch('/api/rate', {
             method: 'POST',
             headers: {
@@ -320,7 +338,8 @@ async function submitRating(rating) {
             },
             body: JSON.stringify({
                 movie_id: movieId,
-                rating: rating
+                rating: rating,
+                user_id: userId
             })
         });
         
@@ -330,7 +349,7 @@ async function submitRating(rating) {
             feedback.textContent = `✅ Rating ${rating}/5 salvat! Mulțumim pentru feedback.`;
             feedback.className = 'rating-feedback success';
         } else {
-            throw new Error(data.error);
+            throw new Error(data.error || 'Unknown error');
         }
     } catch (error) {
         feedback.textContent = `❌ Eroare: ${error.message}`;

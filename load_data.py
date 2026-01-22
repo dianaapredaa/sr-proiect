@@ -132,10 +132,13 @@ def load_ratings_to_recombee(recommender, limit=None):
     recommender.add_ratings_batch(ratings_data, batch_size=1000)
     
     # Calculează preferințele utilizatorilor din rating-uri
+    # SKIP: Calcularea preferințelor e prea lentă (multe API calls)
+    # Recombee va folosi automat rating-urile pentru recomandări
     print("\n" + "=" * 50)
-    print("🎯 CALCULARE PREFERINȚE UTILIZATORI")
+    print("✅ RATING-URI ÎNCĂRCATE CU SUCCES")
     print("=" * 50)
-    recommender.update_all_users_preferences()
+    print("ℹ️  Recombee va folosi automat rating-urile pentru recomandări hibride")
+    print("   (Nu e nevoie să calculăm manual preferințele)")
     
     return len(ratings_data)
 

@@ -12,6 +12,58 @@ from recombee_api_client.api_requests import (
 from recombee_api_client.exceptions import APIException
 from tqdm import tqdm
 import config
+import time
+
+
+def safe_response(response):
+    """
+    Helper pentru a gestiona response-urile Recombee.
+    API-ul poate returna direct valoarea sau un response object.
+    
+    Args:
+        response: Response de la Recombee API
+        
+    Returns:
+        Valoarea efectivă (dict, list, etc.)
+    """
+    if response is None:
+        return None
+    
+    # Dacă are metoda .json(), e un response object
+    if hasattr(response, 'json') and callable(response.json):
+        return response.json()
+    
+    # Altfel, returnează direct valoarea
+    return response
+
+
+def retry_on_timeout(max_retries=2, initial_delay=0.5):
+    """
+    Decorator pentru retry cu exponential backoff în caz de timeout.
+    
+    Args:
+        max_retries: Numărul maxim de retry-uri
+        initial_delay: Delay inițial între retry-uri (în secunde)
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if 'timeout' in str(e).lower() or 'Timeout' in str(type(e).__name__):
+                        if attempt < max_retries:
+                            print(f"⏳ Timeout detectat, retry {attempt + 1}/{max_retries} după {delay}s...")
+                            time.sleep(delay)
+                            delay *= 2  # Exponential backoff
+                        else:
+                            print(f"❌ Timeout final după {max_retries} încercări")
+                            raise
+                    else:
+                        raise
+        return wrapper
+    return decorator
 
 
 class MovieRecommender:
@@ -52,6 +104,10 @@ class MovieRecommender:
             self.private_token,
             region=self.region
         )
+        
+        # Setează timeout personalizat (default e 1000ms)
+        # Timeout-ul se setează per request, nu per client
+        self.default_timeout = 5000  # 5 secunde
         
         print(f"✅ Client Recombee inițializat pentru database: {self.database_id}")
     
@@ -363,6 +419,7 @@ class MovieRecommender:
             cascade_create=True
         ))
     
+    @retry_on_timeout(max_retries=2, initial_delay=0.5)
     def create_user(self, user_id, preferred_genres=None, preferred_directors=None):
         """
         Creează un utilizator nou cu preferințele inițiale.
@@ -379,8 +436,17 @@ class MovieRecommender:
         if preferred_directors:
             values['preferred_directors'] = preferred_directors
         
-        self.client.send(SetUserValues(str(user_id), values, cascade_create=True))
-        print(f"✅ Utilizator {user_id} creat cu succes")
+        try:
+            # Trimite cererea (timeout-ul nu se poate seta per-request în API-ul Python)
+            self.client.send(SetUserValues(str(user_id), values, cascade_create=True))
+            print(f"✅ Utilizator {user_id} creat cu succes")
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            print(f"⚠️  Timeout/Eroare la creare user {user_id}: {error_msg}")
+            # Nu e fatal - utilizatorul poate fi creat oricum prin cascade_create
+            # la prima interacțiune (rating, view, etc.)
+            return False
     
     def get_recommendations_for_user(self, user_id, count=10, filter_genres=None, 
                                      exclude_watched=True, diversity=0.3):
@@ -404,20 +470,41 @@ class MovieRecommender:
         # Construim filtrul ReQL pentru genuri
         # ATENȚIE: Ghilimele simple (') sunt pentru proprietăți, ghilimele duble (") pentru string-uri constante
         filter_expression = None
-        if filter_genres:
+        if filter_genres and len(filter_genres) > 0:
             # Filtrăm după genuri specifice
             # Format corect: "Animation" in 'genres' (ghilimele duble pentru string, simple pentru proprietate)
             genre_filters = [f'"{g}" in \'genres\'' for g in filter_genres]
             filter_expression = ' or '.join(genre_filters)
         
-        # Booster pentru filme cu rating-uri bune (returnează număr, nu boolean)
-        # Multiplică scorul cu 1.5 pentru filme cu rating > 7, altfel 1.0
-        # booster = "if 'vote_average' > 7 then 1.5 else 1.0"
-        booster = """
-        if 'vote_count' < 500 AND 'vote_average' > 7 then 1.3 
-        else if 'vote_average' > 7 then 1.5 
-        else 1.0
-        """
+        # Booster îmbunătățit pentru a include și regizorii preferați
+        # Obține preferințele utilizatorului
+        try:
+            from recombee_api_client.api_requests import GetUserValues
+            user_data = self.client.send(GetUserValues(str(user_id)))
+            preferred_directors = user_data.get('preferred_directors', [])
+            
+            # Construiește booster dinamic bazat pe regizori
+            if preferred_directors and len(preferred_directors) > 0:
+                director_conditions = ' or '.join([f"'director' == \"{d}\"" for d in preferred_directors[:3]])
+                booster = f"""
+                if ({director_conditions}) then 2.0
+                else if 'vote_count' < 500 AND 'vote_average' > 7 then 1.3 
+                else if 'vote_average' > 7 then 1.5 
+                else 1.0
+                """
+            else:
+                booster = """
+                if 'vote_count' < 500 AND 'vote_average' > 7 then 1.3 
+                else if 'vote_average' > 7 then 1.5 
+                else 1.0
+                """
+        except:
+            # Fallback la booster simplu
+            booster = """
+            if 'vote_count' < 500 AND 'vote_average' > 7 then 1.3 
+            else if 'vote_average' > 7 then 1.5 
+            else 1.0
+            """
         
         try:
             response = self.client.send(RecommendItemsToUser(
@@ -435,7 +522,27 @@ class MovieRecommender:
                 }
             ))
             
-            return self._format_recommendations(response['recomms'])
+            result = self._format_recommendations(response['recomms'])
+            
+            # Dacă nu am găsit destule filme cu filtrarea, încearcă fără filtru
+            if len(result) < count // 2 and filter_expression:
+                print(f"⚠️  Doar {len(result)} filme găsite cu genurile {filter_genres}, încercăm fără filtru...")
+                response_fallback = self.client.send(RecommendItemsToUser(
+                    str(user_id),
+                    count,
+                    filter=None,
+                    booster=booster,
+                    cascade_create=True,
+                    return_properties=True,
+                    diversity=diversity,
+                    scenario='homepage',
+                    logic={
+                        'name': 'recombee:personal',
+                    }
+                ))
+                result = self._format_recommendations(response_fallback['recomms'])
+            
+            return result
             
         except APIException as e:
             print(f"⚠️ Eroare la obținerea recomandărilor: {e}")
@@ -457,7 +564,7 @@ class MovieRecommender:
         """
         # Pentru utilizatori noi, creăm un filtru bazat pe genurile preferate
         # ATENȚIE: Ghilimele simple (') sunt pentru proprietăți, ghilimele duble (") pentru string-uri constante
-        if preferred_genres:
+        if preferred_genres and len(preferred_genres) > 0:
             genre_filters = [f'"{g}" in \'genres\'' for g in preferred_genres]
             filter_expression = ' or '.join(genre_filters)
         else:
@@ -485,7 +592,26 @@ class MovieRecommender:
                 }
             ))
             
-            return self._format_recommendations(response['recomms'])
+            result = self._format_recommendations(response['recomms'])
+            
+            # Dacă nu am găsit destule filme cu filtrarea, încearcă fără filtru
+            if len(result) < count // 2 and filter_expression:
+                print(f"⚠️  Doar {len(result)} filme găsite cu genurile {preferred_genres}, încercăm fără filtru...")
+                response_fallback = self.client.send(RecommendItemsToUser(
+                    temp_user_id,
+                    count,
+                    filter=None,
+                    booster=booster,
+                    cascade_create=True,
+                    return_properties=True,
+                    scenario='cold_start',
+                    logic={
+                        'name': 'recombee:personal',
+                    }
+                ))
+                result = self._format_recommendations(response_fallback['recomms'])
+            
+            return result
             
         except APIException as e:
             print(f"⚠️ Eroare la recomandări cold start: {e}")

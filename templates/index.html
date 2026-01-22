@@ -54,11 +54,16 @@
             <span class="title-icon">🎯</span>
             Recomandate pentru tine
         </h2>
-        <div class="recommendation-type" id="recommendationType">
-            <span class="type-badge hybrid">
-                <span class="badge-icon">🔀</span>
-                Abordare Hibridă
-            </span>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <div class="recommendation-type" id="recommendationType">
+                <span class="type-badge hybrid">
+                    <span class="badge-icon">🔀</span>
+                    Abordare Hibridă
+                </span>
+            </div>
+            <button class="btn btn-secondary" id="refreshRecommendationsBtn" onclick="refreshRecommendations()" title="Regenerează recomandările">
+                🔄 Reîncarcă
+            </button>
         </div>
     </div>
     
@@ -135,6 +140,9 @@
 
 {% block extra_js %}
 <script>
+// Current genre filter
+let currentGenre = '';
+
 document.addEventListener('DOMContentLoaded', function() {
     // Check user status
     checkUserStatus();
@@ -148,6 +156,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Setup genre filter
     setupGenreFilter();
 });
+
+function refreshRecommendations() {
+    console.log('Refreshing recommendations...');
+    loadRecommendations(currentGenre);
+}
 
 function checkUserStatus() {
     fetch('/api/user/preferences')
@@ -180,6 +193,7 @@ function checkUserStatus() {
 }
 
 function loadRecommendations(genre = '') {
+    currentGenre = genre;  // Save current filter
     const grid = document.getElementById('moviesGrid');
     const loading = document.getElementById('loadingContainer');
     

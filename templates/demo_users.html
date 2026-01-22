@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Demo Users</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .user-card {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #e50914;
+        }
+        button {
+            background: #e50914;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #f40612;
+        }
+        h1 { color: #e50914; }
+        .info { color: #aaa; font-size: 14px; }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+    </style>
+</head>
+<body>
+    <h1>🎭 Test Demo Users</h1>
+    <p class="info">Click pe un buton pentru a "loga" cu acel user demo:</p>
+    
+    <div id="users"></div>
+    
+    <div id="result" style="margin-top: 20px; padding: 15px; background: #333; border-radius: 4px;"></div>
+
+    <script>
+        const DEMO_USERS = {
+            'demo_action': {
+                name: 'Alex - Fan Acțiune',
+                genres: ['Action', 'Thriller', 'Adventure'],
+                directors: ['Christopher Nolan', 'James Cameron'],
+                description: '3 rating-uri → Hybrid'
+            },
+            'demo_scifi': {
+                name: 'Maria - Sci-Fi Nerd',
+                genres: ['Science Fiction', 'Fantasy'],
+                directors: ['Denis Villeneuve', 'Ridley Scott'],
+                description: '3 rating-uri → Hybrid'
+            },
+            'demo_drama': {
+                name: 'Ion - Drama Lover',
+                genres: ['Drama', 'Crime'],
+                directors: ['Francis Ford Coppola', 'Martin Scorsese'],
+                description: '3 rating-uri → Hybrid'
+            },
+            'demo_cold_start': {
+                name: 'Andrei - Cold Start',
+                genres: ['Action', 'Sci-Fi'],
+                directors: ['Christopher Nolan'],
+                description: '0 rating-uri → Content-Based'
+            },
+            'demo_heavy': {
+                name: 'Mihai - Heavy User',
+                genres: ['Action', 'Adventure', 'Sci-Fi', 'Thriller'],
+                directors: ['Christopher Nolan', 'Steven Spielberg'],
+                description: '6+ rating-uri → Strong Collaborative'
+            }
+        };
+
+        // Renderare utilizatori
+        const usersDiv = document.getElementById('users');
+        Object.entries(DEMO_USERS).forEach(([id, user]) => {
+            const card = document.createElement('div');
+            card.className = 'user-card';
+            card.innerHTML = `
+                <h3>${user.name}</h3>
+                <p class="info">
+                    Genuri: ${user.genres.join(', ')}<br>
+                    Regizori: ${user.directors.join(', ')}<br>
+                    ${user.description}
+                </p>
+                <button onclick="loginAs('${id}')">Logare ca ${id}</button>
+            `;
+            usersDiv.appendChild(card);
+        });
+
+        // Funcție de logare
+        async function loginAs(userId) {
+            const resultDiv = document.getElementById('result');
+            const user = DEMO_USERS[userId];
+            
+            resultDiv.innerHTML = `<p>⏳ Logare ca ${user.name}...</p>`;
+            
+            try {
+                const response = await fetch('/api/user/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        demo_user_id: userId,
+                        preferred_genres: user.genres,
+                        preferred_directors: user.directors
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Logat cu succes ca: ${user.name}</p>
+                        <p class="info">User ID: ${data.user_id}</p>
+                        <p class="info">Redirecting către homepage în 2 secunde...</p>
+                    `;
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ Eroare: ${JSON.stringify(data)}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Eroare: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

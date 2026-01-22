@@ -13,6 +13,19 @@ RECOMBEE_REGION = os.getenv('RECOMBEE_REGION', 'eu-west')  # or 'us-west', 'ap-s
 
 # Data Paths (relative to project root)
 DATA_DIR = os.getenv('DATA_DIR', 'dataset')
+
+# Try to find dataset in multiple locations
+if not os.path.exists(DATA_DIR):
+    # Check if dataset is in the parent directory structure
+    parent_dataset = os.path.join('..', 'University', 'tema-sr-2', 'sr-proiect', 'dataset')
+    if os.path.exists(parent_dataset):
+        DATA_DIR = parent_dataset
+    else:
+        # Try relative path from workspace
+        workspace_dataset = os.path.join('..', '..', 'University', 'tema-sr-2', 'sr-proiect', 'dataset')
+        if os.path.exists(workspace_dataset):
+            DATA_DIR = workspace_dataset
+
 MOVIES_METADATA_PATH = os.path.join(DATA_DIR, 'movies_metadata.csv')
 KEYWORDS_PATH = os.path.join(DATA_DIR, 'keywords.csv')
 CREDITS_PATH = os.path.join(DATA_DIR, 'credits.csv')

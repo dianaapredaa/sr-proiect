@@ -36,8 +36,25 @@ def get_movies_cache():
     global movies_cache
     if movies_cache is None:
         try:
+            # Încarcă toate datele: movies + keywords + credits
+            from data_loader import load_keywords, load_credits, merge_movie_data
+            import os
+            
             movies = load_movies_metadata()
-            movies_cache = movies
+            
+            # Încarcă keywords și credits dacă există
+            keywords = None
+            credits = None
+            
+            if os.path.exists(config.KEYWORDS_PATH):
+                keywords = load_keywords()
+            
+            if os.path.exists(config.CREDITS_PATH):
+                credits = load_credits()
+            
+            # Combină toate datele (inclusiv director!)
+            movies_cache = merge_movie_data(movies, keywords, credits)
+            
         except FileNotFoundError:
             movies_cache = None
     return movies_cache
@@ -63,6 +80,12 @@ def register():
     return render_template('register.html', genres=config.GENRES_FOR_COLD_START)
 
 
+@app.route('/demo')
+def demo_users():
+    """Pagina pentru selectare utilizatori demo (pentru prezentare)."""
+    return render_template('demo_users.html')
+
+
 # ==================== ROUTES - API ====================
 
 @app.route('/api/recommendations', methods=['GET'])
@@ -83,7 +106,13 @@ def get_recommendations():
     count = int(request.args.get('count', config.DEFAULT_NUM_RECOMMENDATIONS))
     genres_param = request.args.get('genres', '')
     
+    # Folosește genurile din parametru SAU din preferințe
     genres = [g.strip() for g in genres_param.split(',') if g.strip()] if genres_param else None
+    if not genres and user_id:
+        # Dacă utilizatorul are preferințe salvate, folosește-le
+        preferred_genres = session.get('preferred_genres', [])
+        if preferred_genres:
+            genres = preferred_genres
     
     # Verificăm dacă avem Recombee configurat
     if config.RECOMBEE_DATABASE_ID == 'your-database-id':
@@ -98,7 +127,8 @@ def get_recommendations():
             recommendations = rec.get_recommendations_for_user(
                 user_id, 
                 count=count, 
-                filter_genres=genres
+                filter_genres=genres,
+                diversity=0.4  # Mai multă diversitate
             )
         else:
             # Utilizator nou (Cold Start) - recomandări bazate pe conținut
@@ -112,7 +142,8 @@ def get_recommendations():
             'success': True,
             'recommendations': recommendations,
             'method': 'hybrid' if user_id else 'content_based',
-            'user_id': user_id
+            'user_id': user_id,
+            'used_genres': genres
         })
         
     except Exception as e:
@@ -163,14 +194,31 @@ def rate_movie():
     Aceasta hrănește sistemul de Filtrare Colaborativă.
     """
     data = request.json
-    user_id = data.get('user_id', session.get('user_id'))
+    
+    # Debug: verifică ce primește
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'No JSON data received'
+        }), 400
+    
+    # User ID: poate veni din request sau sesiune
+    user_id = data.get('user_id') or session.get('user_id')
+    
+    # Dacă nu avem user_id, creăm unul temporar
+    if not user_id:
+        import uuid
+        user_id = f"anon_{uuid.uuid4().hex[:8]}"
+        session['user_id'] = user_id
+        print(f"✨ Creat user temporar: {user_id}")
+    
     movie_id = data.get('movie_id')
     rating = data.get('rating')
     
-    if not all([user_id, movie_id, rating]):
+    if not all([movie_id, rating]):
         return jsonify({
             'success': False,
-            'error': 'Missing required fields: user_id, movie_id, rating'
+            'error': f'Missing required fields: movie_id={movie_id}, rating={rating}'
         }), 400
     
     if config.RECOMBEE_DATABASE_ID == 'your-database-id':
@@ -200,29 +248,41 @@ def register_user():
     """
     API: Înregistrează un utilizator nou cu preferințele inițiale.
     Aceasta rezolvă problema de Cold Start pentru utilizatori noi.
+    
+    DEMO MODE: Trimite 'demo_user_id' pentru a folosi utilizatori demo existenți
     """
     data = request.json
     preferred_genres = data.get('preferred_genres', [])
     preferred_directors = data.get('preferred_directors', [])
     
-    # Generăm un ID unic pentru utilizator
-    user_id = str(uuid.uuid4())
+    # DEMO MODE: Permite folosirea utilizatorilor demo existenți
+    demo_user_id = data.get('demo_user_id')
+    if demo_user_id and demo_user_id.startswith('demo_'):
+        user_id = demo_user_id
+        print(f"🎭 DEMO MODE: Folosire user existent: {user_id}")
+    else:
+        # Generăm un ID unic pentru utilizator
+        user_id = str(uuid.uuid4())
     
     # Salvăm în sesiune
     session['user_id'] = user_id
     session['preferred_genres'] = preferred_genres
     
+    # Încearcă să creeze utilizatorul în Recombee (nu e fatal dacă eșuează)
+    recombee_success = False
     if config.RECOMBEE_DATABASE_ID != 'your-database-id':
         try:
             rec = get_recommender()
-            rec.create_user(user_id, preferred_genres, preferred_directors)
+            recombee_success = rec.create_user(user_id, preferred_genres, preferred_directors)
         except Exception as e:
-            print(f"Warning: Nu s-a putut crea utilizatorul în Recombee: {e}")
+            print(f"⚠️  Warning: Nu s-a putut crea utilizatorul în Recombee: {e}")
+            print(f"    Nu e problemă - utilizatorul va fi creat automat la prima interacțiune")
     
     return jsonify({
         'success': True,
         'user_id': user_id,
-        'message': 'Utilizator înregistrat cu succes'
+        'message': 'Utilizator înregistrat cu succes',
+        'recombee_synced': recombee_success  # Info pentru debug
     })
 
 
@@ -282,39 +342,62 @@ def get_popular():
 
 @app.route('/api/movie/<movie_id>', methods=['GET'])
 def get_movie_details(movie_id):
-    """API: Obține detaliile unui film."""
-    movies = get_movies_cache()
-    
-    if movies is None:
+    """API: Obține detaliile unui film DIRECT din Recombee."""
+    try:
+        # Ia datele DIRECT din Recombee (nu din cache local)
+        from recombee_api_client.api_requests import GetItemValues
+        rec = get_recommender()
+        item_data = rec.client.send(GetItemValues(str(movie_id)))
+        
         return jsonify({
-            'success': False,
-            'error': 'Dataset not loaded',
-            'movie': get_demo_movie(movie_id)
+            'success': True,
+            'movie': {
+                'id': str(movie_id),
+                'title': item_data.get('title', 'Unknown'),
+                'overview': item_data.get('overview', ''),
+                'genres': item_data.get('genres', []),
+                'director': item_data.get('director', ''),  # DIRECT din Recombee!
+                'vote_average': item_data.get('vote_average', 0),
+                'vote_count': int(item_data.get('vote_count', 0)),
+                'runtime': int(item_data.get('runtime', 0)),
+                'release_date': item_data.get('release_date', ''),
+                'poster_path': item_data.get('poster_path', '')
+            }
         })
-    
-    movie = movies[movies['id'] == int(movie_id)]
-    
-    if movie.empty:
+    except Exception as e:
+        # Fallback la cache local dacă Recombee nu răspunde
+        movies = get_movies_cache()
+        
+        if movies is None:
+            return jsonify({
+                'success': False,
+                'error': 'Dataset not loaded'
+            }), 404
+        
+        movie = movies[movies['id'] == int(movie_id)]
+        
+        if movie.empty:
+            return jsonify({
+                'success': False,
+                'error': 'Movie not found'
+            }), 404
+        
+        row = movie.iloc[0]
         return jsonify({
-            'success': False,
-            'error': 'Movie not found'
-        }), 404
-    
-    row = movie.iloc[0]
-    return jsonify({
-        'success': True,
-        'movie': {
-            'id': str(row['id']),
-            'title': row['title'],
-            'overview': row.get('overview', ''),
-            'genres': row.get('genre_names', []),
-            'vote_average': row.get('vote_average', 0),
-            'vote_count': int(row.get('vote_count', 0)),
-            'runtime': int(row.get('runtime', 0)),
-            'release_date': row.get('release_date', ''),
-            'poster_path': row.get('poster_path', '')
-        }
-    })
+            'success': True,
+            'movie': {
+                'id': str(row['id']),
+                'title': row['title'],
+                'overview': row.get('overview', ''),
+                'genres': row.get('genre_names', []),
+                'director': row.get('director', ''),
+                'vote_average': row.get('vote_average', 0),
+                'vote_count': int(row.get('vote_count', 0)),
+                'runtime': int(row.get('runtime', 0)),
+                'release_date': row.get('release_date', ''),
+                'poster_path': row.get('poster_path', '')
+            }
+        })
 
 
 # ==================== DEMO DATA ====================
